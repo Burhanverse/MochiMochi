@@ -238,6 +238,39 @@ def _rebuild_cpu_pool(workers: int):
     _CPU_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
     logger.info(f"CPU ThreadPoolExecutor rebuilt with max_workers={workers}")
 
+# ── Global work semaphore (lazy, size driven by config) ──────────────────────
+# Every pack-processing path used to create its OWN local
+# asyncio.Semaphore(_cfg("max_concurrent")) — which only capped concurrency
+# *within* a single pack. Running two packs at once meant two independent
+# semaphores each admitting max_concurrent tasks, so actual concurrent
+# downloads/ffmpeg conversions/encodes could be 2x (or Nx) the configured
+# limit, all piling onto the same shared _CPU_POOL / _PROCESS_POOL / ffmpeg
+# subprocesses. That resource contention is what caused sporadic per-sticker
+# failures when multiple packs ran simultaneously.
+#
+# This single module-level semaphore is shared by every pack, so the total
+# number of stickers being actively downloaded/converted at once — across
+# ALL concurrently running packs — is capped at max_concurrent.
+_GLOBAL_WORK_SEM: asyncio.Semaphore | None = None
+
+def _get_global_work_sem() -> asyncio.Semaphore:
+    global _GLOBAL_WORK_SEM
+    if _GLOBAL_WORK_SEM is None:
+        _GLOBAL_WORK_SEM = asyncio.Semaphore(_cfg("max_concurrent"))
+        logger.info(f"Global work semaphore created with max_concurrent={_cfg('max_concurrent')}")
+    return _GLOBAL_WORK_SEM
+
+def _rebuild_global_work_sem(workers: int):
+    """Replace the global work semaphore with a freshly sized one.
+
+    Any tasks already holding a permit from the old semaphore keep running
+    (Semaphore objects aren't shut down like executors are); this just makes
+    sure new acquisitions use the updated limit.
+    """
+    global _GLOBAL_WORK_SEM
+    _GLOBAL_WORK_SEM = asyncio.Semaphore(workers)
+    logger.info(f"Global work semaphore rebuilt with max_concurrent={workers}")
+
 # ── Authorised chats ──────────────────────────────────────────────────────────
 def save_authorized_chats():
     try:
@@ -1153,8 +1186,8 @@ async def create_simple_zip(
     total = len(stickers)
     stats = {'skipped': 0, 'skipped_reasons': []}
 
-    # FIX: semaphore size now reads from config
-    sem = asyncio.Semaphore(_cfg("max_concurrent"))
+    # Shared across all concurrently running packs — see _get_global_work_sem()
+    sem = _get_global_work_sem()
 
     async def _process_one(i: int, sticker):
         async with sem:
@@ -1257,8 +1290,8 @@ async def create_wastickers_zip(
         pack_type = "Animated" if should_be_animated else "Static"
         logger.info(f"Pack type determined: {pack_type}")
 
-        # FIX: semaphore size reads from config
-        sem = asyncio.Semaphore(_cfg("max_concurrent"))
+        # Shared across all concurrently running packs — see _get_global_work_sem()
+        sem = _get_global_work_sem()
 
         async def process_one_sticker(i, sticker):
             async with sem:
@@ -1596,6 +1629,7 @@ async def settings_callback(client: Client, callback_query):
         _save_config(CONFIG)
         _rebuild_process_pool(_cfg("process_pool_workers"))
         _rebuild_cpu_pool(_cfg("max_concurrent"))
+        _rebuild_global_work_sem(_cfg("max_concurrent"))
         await callback_query.answer("Reset to defaults.")
         try:
             await callback_query.message.edit_text(_settings_text(), reply_markup=_settings_keyboard())
@@ -1627,6 +1661,7 @@ async def settings_callback(client: Client, callback_query):
         _rebuild_process_pool(new_val)
     if key == "max_concurrent":
         _rebuild_cpu_pool(new_val)
+        _rebuild_global_work_sem(new_val)
 
     await callback_query.answer(f"{meta['label']} → {new_val}{meta['unit']}")
     try:
@@ -1803,8 +1838,17 @@ async def process_stickers(
     author_name: str,
     pack_name: str,
     send_to_private: bool,
-    from_user_id: int
+    from_user_id: int,
+    reply_to_message_id: int | None = None,
 ):
+    """
+    reply_to_message_id: if set, the final uploaded pack/ZIP is sent as a
+    reply to that message (e.g. the original sticker the user ran /wast on),
+    instead of as a standalone message. Must refer to a message in
+    `target_chat` — Telegram can't reply across chats (e.g. when the pack is
+    routed to the user's private chat instead of the group it was requested
+    in), so callers should pass None in that case.
+    """
     try:
         _pack_start_time = time.monotonic()
         set_name_sanitized = sanitize_filename(set_title)
@@ -1841,13 +1885,29 @@ async def process_stickers(
             await msg.edit_text("Uploading ZIP file...")
             mode_desc = "Raw stickers" if skip_conversion else "Converted stickers"
             elapsed = _format_elapsed(time.monotonic() - _pack_start_time)
-            await client.send_document(
-                chat_id=target_chat,
-                document=str(zip_path),
-                file_name=zip_path.name,
-                caption=f"{mode_desc}: {valid_count} files\n{set_title}\nConverted in {elapsed}",
-                disable_notification=True
-            )
+            try:
+                await client.send_document(
+                    chat_id=target_chat,
+                    document=str(zip_path),
+                    file_name=zip_path.name,
+                    caption=f"{mode_desc}: {valid_count} files\n{set_title}\nConverted in {elapsed}",
+                    disable_notification=True,
+                    reply_to_message_id=reply_to_message_id,
+                )
+            except Exception as re:
+                # Original sticker message may have been deleted mid-run —
+                # fall back to a plain (non-reply) send rather than losing the pack.
+                if reply_to_message_id and "reply" in str(re).lower():
+                    logger.warning(f"Reply target message gone, sending without reply: {re}")
+                    await client.send_document(
+                        chat_id=target_chat,
+                        document=str(zip_path),
+                        file_name=zip_path.name,
+                        caption=f"{mode_desc}: {valid_count} files\n{set_title}\nConverted in {elapsed}",
+                        disable_notification=True,
+                    )
+                else:
+                    raise
             try:
                 zip_path.unlink(missing_ok=True)
             except Exception as ce:
@@ -1930,12 +1990,21 @@ async def process_stickers(
                     document=str(zip_path),
                     file_name=zip_path.name,
                     caption=caption,
-                    disable_notification=True
+                    disable_notification=True,
+                    reply_to_message_id=reply_to_message_id,
                 )
                 break
             except FloodWait as fw:
                 logger.warning(f"FloodWait on send_document: waiting {fw.value}s")
                 await asyncio.sleep(fw.value)
+            except Exception as re:
+                # Original sticker message may have been deleted mid-run —
+                # fall back to a plain (non-reply) send rather than losing the pack.
+                if reply_to_message_id and "reply" in str(re).lower():
+                    logger.warning(f"Reply target message gone, sending without reply: {re}")
+                    reply_to_message_id = None
+                    continue
+                raise
 
         try:
             zip_path.unlink(missing_ok=True)
@@ -2054,13 +2123,19 @@ async def convert_pack(client: Client, message: Message):
         send_to_private = "private" in message.text.lower() if message.text else False
         target_chat = message.from_user.id if send_to_private and message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP] else message.chat.id
 
+        # Reply-thread the finished pack onto the sticker /wast was run on —
+        # only valid when the pack stays in the same chat as that sticker
+        # (Telegram can't reply across chats, e.g. when routed to DM via "private").
+        reply_to_message_id = replied.id if target_chat == message.chat.id else None
+
         await process_stickers(
             client=client, msg=msg, message_text=message.text,
             target_chat=target_chat, set_title=set_title, stickers=stickers,
             use_simple_zip=use_simple_zip, skip_conversion=skip_conversion,
             author_name=message.from_user.first_name or "Telegram User",
             pack_name=pack_name, send_to_private=send_to_private,
-            from_user_id=message.from_user.id
+            from_user_id=message.from_user.id,
+            reply_to_message_id=reply_to_message_id,
         )
     finally:
         try:
@@ -2220,7 +2295,7 @@ async def process_local_folder(client: Client, message: Message):
 
         total_processed = 0
         zip_paths = []
-        _local_sem = asyncio.Semaphore(_cfg("max_concurrent"))
+        _local_sem = _get_global_work_sem()  # shared across all concurrently running packs
 
         for type_name, files in types_to_process:
             chunks = split_into_chunks(files, 30)
@@ -2359,7 +2434,7 @@ async def process_zip_upload(client: Client, message: Message):
                 message.from_user.id if send_to_private and message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]
                 else message.chat.id
             )
-            _zip_sem = asyncio.Semaphore(_cfg("max_concurrent"))
+            _zip_sem = _get_global_work_sem()  # shared across all concurrently running packs
 
             for type_name, files in types_to_process:
                 chunks = split_into_chunks(files, 30)
