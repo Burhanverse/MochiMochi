@@ -475,6 +475,41 @@ public class WastickerParser {
                 for (int p = 0; p < packsArray.length(); p++) {
                     JSONObject packJson = packsArray.getJSONObject(p);
                     String identifier = packJson.optString("identifier", UUID.randomUUID().toString());
+                    String tgSetName = packJson.optString("telegram_set_name", "").trim().toLowerCase(java.util.Locale.US);
+                    String packName = packJson.optString("name", "").trim();
+                    String packPublisher = packJson.optString("publisher", "").trim();
+
+                    int existingIndex = -1;
+                    for (int i = 0; i < masterPacks.length(); i++) {
+                        JSONObject existing = masterPacks.getJSONObject(i);
+                        String existingId = existing.optString("identifier", "");
+                        String existingTgName = existing.optString("telegram_set_name", "").trim().toLowerCase(java.util.Locale.US);
+                        String existingName = existing.optString("name", "").trim();
+                        String existingPub = existing.optString("publisher", "").trim();
+
+                        // 1. Direct identifier match
+                        if (!identifier.isEmpty() && identifier.equals(existingId)) {
+                            existingIndex = i;
+                            break;
+                        }
+                        // 2. Telegram set name match
+                        if (!tgSetName.isEmpty() && !existingTgName.isEmpty() && tgSetName.equals(existingTgName)) {
+                            existingIndex = i;
+                            identifier = existingId;
+                            packJson.put("identifier", identifier);
+                            break;
+                        }
+                        // 3. Name and publisher match (fallback for legacy imports)
+                        if (!packName.isEmpty() && !packPublisher.isEmpty()
+                                && packName.equalsIgnoreCase(existingName)
+                                && packPublisher.equalsIgnoreCase(existingPub)) {
+                            existingIndex = i;
+                            identifier = existingId;
+                            packJson.put("identifier", identifier);
+                            break;
+                        }
+                    }
+
                     if (firstPackIdentifier == null) firstPackIdentifier = identifier;
 
                     ensureDirectory(context, identifier, safRoot);
@@ -545,7 +580,11 @@ public class WastickerParser {
                     if (!packJson.has("image_data_version")) {
                         packJson.put("image_data_version", "1");
                     }
-                    masterPacks.put(packJson);
+                    if (existingIndex >= 0) {
+                        masterPacks.put(existingIndex, packJson);
+                    } else {
+                        masterPacks.put(packJson);
+                    }
                 }
             }
 
@@ -637,11 +676,55 @@ public class WastickerParser {
             if (masterContentsFile.exists()) json = readStringFromFile(masterContentsFile);
         }
 
-        if (json != null) return new JSONObject(json);
+        JSONObject masterRoot;
+        if (json != null) {
+            masterRoot = new JSONObject(json);
+            if (sanitizeMasterRoot(masterRoot)) {
+                saveMasterContents(context, masterRoot);
+            }
+            return masterRoot;
+        }
 
-        JSONObject masterRoot = new JSONObject();
+        masterRoot = new JSONObject();
         masterRoot.put("sticker_packs", new JSONArray());
         return masterRoot;
+    }
+
+    private static boolean sanitizeMasterRoot(JSONObject masterRoot) throws JSONException {
+        JSONArray masterPacks = masterRoot.optJSONArray("sticker_packs");
+        if (masterPacks == null || masterPacks.length() <= 1) return false;
+
+        JSONArray cleanPacks = new JSONArray();
+        java.util.Set<String> seenIdentifiers = new java.util.HashSet<>();
+        java.util.Set<String> seenTgSetNames = new java.util.HashSet<>();
+        boolean modified = false;
+
+        for (int i = 0; i < masterPacks.length(); i++) {
+            JSONObject pack = masterPacks.getJSONObject(i);
+            String id = pack.optString("identifier", "").trim();
+            String tgName = pack.optString("telegram_set_name", "").trim().toLowerCase(java.util.Locale.US);
+
+            boolean isDuplicate = false;
+            if (!id.isEmpty() && seenIdentifiers.contains(id)) {
+                isDuplicate = true;
+            } else if (!tgName.isEmpty() && seenTgSetNames.contains(tgName)) {
+                isDuplicate = true;
+            }
+
+            if (isDuplicate) {
+                modified = true;
+                Log.w(TAG, "Sanitizing contents.json: removing duplicate pack identifier=" + id + ", tg_set_name=" + tgName);
+            } else {
+                if (!id.isEmpty()) seenIdentifiers.add(id);
+                if (!tgName.isEmpty()) seenTgSetNames.add(tgName);
+                cleanPacks.put(pack);
+            }
+        }
+
+        if (modified) {
+            masterRoot.put("sticker_packs", cleanPacks);
+        }
+        return modified;
     }
 
     private static void saveMasterContents(Context context, JSONObject root) throws IOException {
