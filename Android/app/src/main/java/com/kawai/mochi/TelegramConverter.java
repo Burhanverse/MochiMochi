@@ -18,6 +18,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.text.BreakIterator;
 import java.util.ArrayList;
 import java.util.List;
@@ -283,12 +285,35 @@ public class TelegramConverter {
         if (publisher.isEmpty()) publisher = "Telegram";
 
         log(callback, "💾 Saving '" + packTitle + "' (" + convertedCount + " static stickers)…");
-        String id = savePackToStorage(context, packTitle, publisher, staticEntries);
+        String id = savePackToStorage(context, packTitle, publisher, staticEntries, setName);
         log(callback, "✅ Saved pack: " + packTitle);
 
         List<ImportedPackResult> results = new ArrayList<>();
         results.add(new ImportedPackResult(id, packTitle, convertedCount, false, skippedAnimCount));
         return results;
+    }
+
+    /**
+     * Deterministically generates a 16-character SHA-1 hex identifier for a Telegram sticker set name.
+     */
+    public static String generateTelegramIdentifier(String setName) {
+        if (setName == null) setName = "";
+        String clean = setName.trim().toLowerCase(Locale.US);
+        if (clean.isEmpty()) {
+            return UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        }
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-1");
+            byte[] hash = md.digest(("telegram:" + clean).getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hash) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.substring(0, 16);
+        } catch (Exception e) {
+            return UUID.nameUUIDFromBytes(("telegram:" + clean).getBytes(StandardCharsets.UTF_8))
+                    .toString().replace("-", "").substring(0, 16);
+        }
     }
 
     // ── Conversion: Static ────────────────────────────────────────────────────
@@ -406,15 +431,15 @@ public class TelegramConverter {
      * are handled by {@link StickerPackChunkManager} when the user taps "Add to WhatsApp".</p>
      */
     private static String savePackToStorage(Context context, String name, String author,
-                                            List<StickerEntry> stickers)
+                                            List<StickerEntry> stickers, String setName)
             throws IOException, JSONException {
 
-        String identifier = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        String identifier = generateTelegramIdentifier(setName);
 
         // Build a temp .wasticker zip in cache and use WastickerParser.importStickerPack()
         File tmpZip = File.createTempFile("tg_import_", ".wasticker", context.getCacheDir());
         try {
-            buildWastickerZip(tmpZip, identifier, name, author, stickers);
+            buildWastickerZip(tmpZip, identifier, name, author, stickers, setName);
             android.net.Uri zipUri = android.net.Uri.fromFile(tmpZip);
             WastickerParser.importStickerPack(context, zipUri);
             StickerContentProvider provider = StickerContentProvider.getInstance();
@@ -429,7 +454,8 @@ public class TelegramConverter {
      * Builds a WhatsApp-compliant .wasticker ZIP in {@code outFile}.
      */
     private static void buildWastickerZip(File outFile, String identifier, String name,
-                                          String author, List<StickerEntry> stickers)
+                                          String author, List<StickerEntry> stickers,
+                                          String setName)
             throws IOException, JSONException {
 
         // Build contents.json
@@ -450,6 +476,9 @@ public class TelegramConverter {
 
         JSONObject pack = new JSONObject();
         pack.put("identifier", identifier);
+        if (setName != null && !setName.trim().isEmpty()) {
+            pack.put("telegram_set_name", setName.trim().toLowerCase(Locale.US));
+        }
         pack.put("name", name);
         pack.put("publisher", author);
         pack.put("tray_image_file", "tray.png");

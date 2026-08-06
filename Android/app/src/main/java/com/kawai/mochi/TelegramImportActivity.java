@@ -236,6 +236,7 @@ public class TelegramImportActivity extends AddStickerPackActivity {
         toggleAdvancedLogButton.setOnClickListener(v -> toggleAdvancedLogs());
         copyAdvancedLogButton.setOnClickListener(v -> copyAdvancedLogToClipboard());
         doneButton.setOnClickListener(v -> {
+            StickerUpdateManager.triggerUpdate();
             setResult(RESULT_OK);
             finish();
         });

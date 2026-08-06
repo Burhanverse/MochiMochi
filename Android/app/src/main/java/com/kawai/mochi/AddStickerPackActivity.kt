@@ -84,11 +84,20 @@ abstract class AddStickerPackActivity : BaseActivity() {
     // ── Public API ────────────────────────────────────────────────────────────
 
     protected fun addStickerPackToWhatsApp(identifier: String, stickerPackName: String) {
-        if (!WhitelistCheck.isWhatsAppConsumerAppInstalled(packageManager) &&
-            !WhitelistCheck.isWhatsAppSmbAppInstalled(packageManager)
-        ) {
-            Toast.makeText(this, R.string.whatsapp_not_installed, Toast.LENGTH_SHORT).show()
-            return
+        val consumerInstalled = WhitelistCheck.isWhatsAppConsumerAppInstalled(packageManager)
+        val smbInstalled = WhitelistCheck.isWhatsAppSmbAppInstalled(packageManager)
+
+        if (!consumerInstalled && !smbInstalled) {
+            val testIntent = createIntentToAddStickerPack(identifier, stickerPackName)
+            val resolves = try {
+                packageManager.queryIntentActivities(testIntent, 0).isNotEmpty()
+            } catch (e: Exception) {
+                false
+            }
+            if (!resolves) {
+                Toast.makeText(this, R.string.whatsapp_not_installed, Toast.LENGTH_SHORT).show()
+                return
+            }
         }
 
         showProgressBar(getString(R.string.add_to_whatsapp))
@@ -283,7 +292,8 @@ abstract class AddStickerPackActivity : BaseActivity() {
         intent.setPackage(whatsappPackageName)
         try {
             addStickerLauncher.launch(intent)
-        } catch (e: ActivityNotFoundException) {
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to launch intent for $whatsappPackageName", e)
             Toast.makeText(this, R.string.whatsapp_not_installed, Toast.LENGTH_SHORT).show()
         }
     }
@@ -294,8 +304,9 @@ abstract class AddStickerPackActivity : BaseActivity() {
             addStickerLauncher.launch(
                 Intent.createChooser(intent, getString(R.string.add_to_whatsapp))
             )
-        } catch (e: ActivityNotFoundException) {
+        } catch (e: Exception) {
             Log.e(TAG, "Couldn't open WhatsApp chooser", e)
+            Toast.makeText(this, R.string.whatsapp_not_installed, Toast.LENGTH_SHORT).show()
         }
     }
 

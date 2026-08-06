@@ -6,6 +6,7 @@ import logging
 import shutil
 import uuid
 import zipfile
+import hashlib
 from io import BytesIO
 from pathlib import Path
 
@@ -23,6 +24,13 @@ from resources import resources
 from telegram_api import download_file_by_id
 
 logger = logging.getLogger(__name__)
+
+
+def generate_telegram_identifier(set_name: str) -> str:
+    clean = set_name.strip().lower() if set_name else ""
+    if not clean:
+        return uuid.uuid4().hex[:16]
+    return hashlib.sha1(f"telegram:{clean}".encode('utf-8')).hexdigest()[:16]
 
 
 def generate_thumbnail_from_webp_bytes(
@@ -52,28 +60,31 @@ def generate_thumbnail_from_webp_bytes(
         return val
 
 
-def _build_contents_json(identifier: str, name: str, publisher: str, emoji_map: dict, animated: bool) -> dict:
+def _build_contents_json(identifier: str, name: str, publisher: str, emoji_map: dict, animated: bool, telegram_set_name: str = "") -> dict:
     stickers_array = [
         {"image_file": fname, "emojis": emojis if emojis else ["😊"]}
         for fname, emojis in emoji_map.items()
     ]
+    pack = {
+        "identifier": identifier,
+        "name": name,
+        "publisher": publisher,
+        "tray_image_file": "tray.png",
+        "publisher_email": "",
+        "publisher_website": "",
+        "privacy_policy_website": "",
+        "license_agreement_website": "",
+        "image_data_version": "1",
+        "avoid_cache": False,
+        "animated_sticker_pack": animated,
+        "stickers": stickers_array,
+    }
+    if telegram_set_name:
+        pack["telegram_set_name"] = telegram_set_name.strip().lower()
     return {
         "android_play_store_link": "",
         "ios_app_store_link": "",
-        "sticker_packs": [{
-            "identifier": identifier,
-            "name": name,
-            "publisher": publisher,
-            "tray_image_file": "tray.png",
-            "publisher_email": "",
-            "publisher_website": "",
-            "privacy_policy_website": "",
-            "license_agreement_website": "",
-            "image_data_version": "1",
-            "avoid_cache": False,
-            "animated_sticker_pack": animated,
-            "stickers": stickers_array,
-        }],
+        "sticker_packs": [pack],
     }
 
 
@@ -332,8 +343,8 @@ async def create_wastickers_zip(
         with open(emojis_json_path, 'w', encoding='utf-8') as f:
             json.dump(emoji_map, f, ensure_ascii=False, indent=2)
 
-        pack_identifier = uuid.uuid4().hex[:16]
-        contents_json = _build_contents_json(pack_identifier, title, author, emoji_map, should_be_animated)
+        pack_identifier = generate_telegram_identifier(set_name)
+        contents_json = _build_contents_json(pack_identifier, title, author, emoji_map, should_be_animated, telegram_set_name=set_name)
         contents_json_path = work_dir / "contents.json"
         with open(contents_json_path, 'w', encoding='utf-8') as f:
             json.dump(contents_json, f, ensure_ascii=False, indent=2)
@@ -393,8 +404,8 @@ def _build_wasticker_zip_from_valid_entries(
         with open(emojis_json_path, 'w', encoding='utf-8') as f:
             json.dump(emoji_map, f, ensure_ascii=False, indent=2)
 
-        pack_identifier = uuid.uuid4().hex[:16]
-        contents_json = _build_contents_json(pack_identifier, title, author, emoji_map, animated_sticker_pack)
+        pack_identifier = generate_telegram_identifier(set_name)
+        contents_json = _build_contents_json(pack_identifier, title, author, emoji_map, animated_sticker_pack, telegram_set_name=set_name)
         contents_json_path = work_dir / "contents.json"
         with open(contents_json_path, 'w', encoding='utf-8') as f:
             json.dump(contents_json, f, ensure_ascii=False, indent=2)

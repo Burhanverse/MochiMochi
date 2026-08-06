@@ -48,6 +48,11 @@ android {
         }
     }
 
+    lint {
+        abortOnError true
+        checkDependencies true
+    }
+
     buildFeatures {
         buildConfig = true
     }
@@ -79,7 +84,9 @@ dependencies {
     implementation libs.androidx.documentfile
     implementation libs.androidx.swiperefreshlayout
 
-    
+    // Security: EncryptedSharedPreferences
+    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
+
     // Performance: Coroutines for background tasks
     implementation libs.kotlinx.coroutines.android
     implementation libs.kotlinx.coroutines.core

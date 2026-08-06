@@ -36,6 +36,10 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x Android/gradlew
 
+      - name: Run Unit Tests and Lint
+        working-directory: Android
+        run: ./gradlew test lint --no-daemon
+
       - name: Decode keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > Android/app/mochimochi-release.jks

@@ -2,21 +2,70 @@ package com.kawai.mochi;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.util.Log;
+
+import androidx.security.crypto.EncryptedSharedPreferences;
+import androidx.security.crypto.MasterKey;
 
 /**
- * Manages Telegram Bot Token storage and retrieval from SharedPreferences.
- * Token is stored securely in SharedPreferences (can be upgraded to EncryptedSharedPreferences later).
+ * Manages Telegram Bot Token storage and retrieval securely via EncryptedSharedPreferences.
  */
 public class BotTokenManager {
-    private static final String PREFS_NAME = "mochi_telegram_prefs";
+    private static final String TAG = "BotTokenManager";
+    private static final String OLD_PREFS_NAME = "mochi_telegram_prefs";
+    private static final String ENCRYPTED_PREFS_NAME = "mochi_telegram_prefs_encrypted";
     private static final String KEY_BOT_TOKEN = "telegram_bot_token";
     private static final String KEY_TOKEN_SAVED_TIME = "telegram_token_saved_time";
+
+    private static SharedPreferences getPrefs(Context context) {
+        if (context == null) return null;
+        try {
+            MasterKey masterKey = new MasterKey.Builder(context)
+                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                    .build();
+
+            SharedPreferences encryptedPrefs = EncryptedSharedPreferences.create(
+                    context,
+                    ENCRYPTED_PREFS_NAME,
+                    masterKey,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SKEY_STREAM,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            );
+
+            migratePlaintextPrefsIfNeeded(context, encryptedPrefs);
+            return encryptedPrefs;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to initialize EncryptedSharedPreferences, falling back to plain SharedPreferences", e);
+            return context.getSharedPreferences(OLD_PREFS_NAME, Context.MODE_PRIVATE);
+        }
+    }
+
+    private static void migratePlaintextPrefsIfNeeded(Context context, SharedPreferences encryptedPrefs) {
+        try {
+            SharedPreferences oldPrefs = context.getSharedPreferences(OLD_PREFS_NAME, Context.MODE_PRIVATE);
+            if (oldPrefs != null && oldPrefs.contains(KEY_BOT_TOKEN)) {
+                String oldToken = oldPrefs.getString(KEY_BOT_TOKEN, "");
+                long oldTime = oldPrefs.getLong(KEY_TOKEN_SAVED_TIME, 0);
+                if (oldToken != null && !oldToken.trim().isEmpty()) {
+                    encryptedPrefs.edit()
+                            .putString(KEY_BOT_TOKEN, oldToken.trim())
+                            .putLong(KEY_TOKEN_SAVED_TIME, oldTime)
+                            .apply();
+                }
+                oldPrefs.edit().clear().apply();
+                Log.i(TAG, "Successfully migrated bot token to EncryptedSharedPreferences.");
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Migration from legacy plaintext SharedPreferences failed", e);
+        }
+    }
 
     /**
      * Returns the stored bot token, or empty string if not set.
      */
     public static String getBotToken(Context context) {
-        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        SharedPreferences prefs = getPrefs(context);
+        if (prefs == null) return "";
         return prefs.getString(KEY_BOT_TOKEN, "").trim();
     }
 
@@ -31,12 +80,13 @@ public class BotTokenManager {
         
         String trimmed = token.trim();
         
-        // Basic validation: bot token format is "123456789:ABCdef..."
         if (!isValidTokenFormat(trimmed)) {
             return false;
         }
         
-        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        SharedPreferences prefs = getPrefs(context);
+        if (prefs == null) return false;
+
         prefs.edit()
             .putString(KEY_BOT_TOKEN, trimmed)
             .putLong(KEY_TOKEN_SAVED_TIME, System.currentTimeMillis())
@@ -48,8 +98,17 @@ public class BotTokenManager {
      * Clears the stored bot token.
      */
     public static void clearBotToken(Context context) {
-        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        prefs.edit().remove(KEY_BOT_TOKEN).remove(KEY_TOKEN_SAVED_TIME).apply();
+        SharedPreferences prefs = getPrefs(context);
+        if (prefs != null) {
+            prefs.edit().remove(KEY_BOT_TOKEN).remove(KEY_TOKEN_SAVED_TIME).apply();
+        }
+        try {
+            SharedPreferences oldPrefs = context.getSharedPreferences(OLD_PREFS_NAME, Context.MODE_PRIVATE);
+            if (oldPrefs != null) {
+                oldPrefs.edit().remove(KEY_BOT_TOKEN).remove(KEY_TOKEN_SAVED_TIME).apply();
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     /**
@@ -63,8 +122,8 @@ public class BotTokenManager {
      * Basic validation of bot token format.
      * Expected format: "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
      */
-    private static boolean isValidTokenFormat(String token) {
-        // Token must contain a colon separating ID and secret
+    public static boolean isValidTokenFormat(String token) {
+        if (token == null) return false;
         if (!token.contains(":")) {
             return false;
         }
@@ -74,14 +133,12 @@ public class BotTokenManager {
             return false;
         }
         
-        // ID part should be numeric
         try {
             Long.parseLong(parts[0]);
         } catch (NumberFormatException e) {
             return false;
         }
         
-        // Secret should be at least 10 characters
         return parts[1].length() >= 10;
     }
 

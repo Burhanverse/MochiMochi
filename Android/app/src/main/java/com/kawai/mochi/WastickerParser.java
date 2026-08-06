@@ -475,6 +475,41 @@ public class WastickerParser {
                 for (int p = 0; p < packsArray.length(); p++) {
                     JSONObject packJson = packsArray.getJSONObject(p);
                     String identifier = packJson.optString("identifier", UUID.randomUUID().toString());
+                    String tgSetName = packJson.optString("telegram_set_name", "").trim().toLowerCase(java.util.Locale.US);
+                    String packName = packJson.optString("name", "").trim();
+                    String packPublisher = packJson.optString("publisher", "").trim();
+
+                    int existingIndex = -1;
+                    for (int i = 0; i < masterPacks.length(); i++) {
+                        JSONObject existing = masterPacks.getJSONObject(i);
+                        String existingId = existing.optString("identifier", "");
+                        String existingTgName = existing.optString("telegram_set_name", "").trim().toLowerCase(java.util.Locale.US);
+                        String existingName = existing.optString("name", "").trim();
+                        String existingPub = existing.optString("publisher", "").trim();
+
+                        // 1. Direct identifier match
+                        if (!identifier.isEmpty() && identifier.equals(existingId)) {
+                            existingIndex = i;
+                            break;
+                        }
+                        // 2. Telegram set name match
+                        if (!tgSetName.isEmpty() && !existingTgName.isEmpty() && tgSetName.equals(existingTgName)) {
+                            existingIndex = i;
+                            identifier = existingId;
+                            packJson.put("identifier", identifier);
+                            break;
+                        }
+                        // 3. Name and publisher match (fallback for legacy imports)
+                        if (!packName.isEmpty() && !packPublisher.isEmpty()
+                                && packName.equalsIgnoreCase(existingName)
+                                && packPublisher.equalsIgnoreCase(existingPub)) {
+                            existingIndex = i;
+                            identifier = existingId;
+                            packJson.put("identifier", identifier);
+                            break;
+                        }
+                    }
+
                     if (firstPackIdentifier == null) firstPackIdentifier = identifier;
 
                     ensureDirectory(context, identifier, safRoot);
@@ -545,11 +580,18 @@ public class WastickerParser {
                     if (!packJson.has("image_data_version")) {
                         packJson.put("image_data_version", "1");
                     }
-                    masterPacks.put(packJson);
+                    if (existingIndex >= 0) {
+                        masterPacks.put(existingIndex, packJson);
+                    } else {
+                        masterPacks.put(packJson);
+                    }
                 }
             }
 
             saveMasterContents(context, masterRoot);
+            StickerContentProvider provider = StickerContentProvider.getInstance();
+            if (provider != null) provider.invalidateStickerPackList();
+            StickerUpdateManager.triggerUpdate();
             return firstPackIdentifier;
 
         } finally {
@@ -637,11 +679,55 @@ public class WastickerParser {
             if (masterContentsFile.exists()) json = readStringFromFile(masterContentsFile);
         }
 
-        if (json != null) return new JSONObject(json);
+        JSONObject masterRoot;
+        if (json != null) {
+            masterRoot = new JSONObject(json);
+            if (sanitizeMasterRoot(masterRoot)) {
+                saveMasterContents(context, masterRoot);
+            }
+            return masterRoot;
+        }
 
-        JSONObject masterRoot = new JSONObject();
+        masterRoot = new JSONObject();
         masterRoot.put("sticker_packs", new JSONArray());
         return masterRoot;
+    }
+
+    private static boolean sanitizeMasterRoot(JSONObject masterRoot) throws JSONException {
+        JSONArray masterPacks = masterRoot.optJSONArray("sticker_packs");
+        if (masterPacks == null || masterPacks.length() <= 1) return false;
+
+        JSONArray cleanPacks = new JSONArray();
+        java.util.Set<String> seenIdentifiers = new java.util.HashSet<>();
+        java.util.Set<String> seenTgSetNames = new java.util.HashSet<>();
+        boolean modified = false;
+
+        for (int i = 0; i < masterPacks.length(); i++) {
+            JSONObject pack = masterPacks.getJSONObject(i);
+            String id = pack.optString("identifier", "").trim();
+            String tgName = pack.optString("telegram_set_name", "").trim().toLowerCase(java.util.Locale.US);
+
+            boolean isDuplicate = false;
+            if (!id.isEmpty() && seenIdentifiers.contains(id)) {
+                isDuplicate = true;
+            } else if (!tgName.isEmpty() && seenTgSetNames.contains(tgName)) {
+                isDuplicate = true;
+            }
+
+            if (isDuplicate) {
+                modified = true;
+                Log.w(TAG, "Sanitizing contents.json: removing duplicate pack identifier=" + id + ", tg_set_name=" + tgName);
+            } else {
+                if (!id.isEmpty()) seenIdentifiers.add(id);
+                if (!tgName.isEmpty()) seenTgSetNames.add(tgName);
+                cleanPacks.put(pack);
+            }
+        }
+
+        if (modified) {
+            masterRoot.put("sticker_packs", cleanPacks);
+        }
+        return modified;
     }
 
     private static void saveMasterContents(Context context, JSONObject root) throws IOException {
@@ -784,17 +870,50 @@ public class WastickerParser {
         zos.closeEntry();
     }
 
+    private static final long MAX_UNCOMPRESSED_BYTES = 200 * 1024 * 1024L; // 200 MB limit
+    private static final int MAX_ENTRY_COUNT = 2000; // 2000 files limit
+
     private static void unzip(InputStream is, File destDir) throws IOException {
+        String destCanonicalPath = destDir.getCanonicalPath();
+        if (!destCanonicalPath.endsWith(File.separator)) {
+            destCanonicalPath += File.separator;
+        }
+
         ZipInputStream zis = new ZipInputStream(is);
         ZipEntry entry;
+        long totalBytes = 0;
+        int entryCount = 0;
+
         while ((entry = zis.getNextEntry()) != null) {
+            entryCount++;
+            if (entryCount > MAX_ENTRY_COUNT) {
+                throw new IOException("Invalid or oversized sticker pack file: exceeded maximum entry count (" + MAX_ENTRY_COUNT + ")");
+            }
+
             File file = new File(destDir, entry.getName());
-            if (entry.isDirectory()) file.mkdirs();
-            else {
-                file.getParentFile().mkdirs();
+            String fileCanonicalPath = file.getCanonicalPath();
+
+            if (!fileCanonicalPath.startsWith(destCanonicalPath)) {
+                throw new IOException("Zip entry attempted path traversal outside target directory: " + entry.getName());
+            }
+
+            if (entry.isDirectory()) {
+                file.mkdirs();
+            } else {
+                File parent = file.getParentFile();
+                if (parent != null) {
+                    parent.mkdirs();
+                }
                 try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(file))) {
-                    byte[] buffer = new byte[8192]; int len;
-                    while ((len = zis.read(buffer)) > 0) bos.write(buffer, 0, len);
+                    byte[] buffer = new byte[8192];
+                    int len;
+                    while ((len = zis.read(buffer)) > 0) {
+                        totalBytes += len;
+                        if (totalBytes > MAX_UNCOMPRESSED_BYTES) {
+                            throw new IOException("Invalid or oversized sticker pack file: exceeded maximum size limit (200MB)");
+                        }
+                        bos.write(buffer, 0, len);
+                    }
                 }
             }
             zis.closeEntry();
@@ -1167,6 +1286,7 @@ public class WastickerParser {
 
         StickerContentProvider provider = StickerContentProvider.getInstance();
         if (provider != null) provider.invalidateStickerPackList();
+        StickerUpdateManager.triggerUpdate();
     }
 
     private static void processAndSaveImage(Context context, Uri sourceUri, String packId, String fileName, boolean isTray) throws IOException {
@@ -1270,6 +1390,9 @@ public class WastickerParser {
         packJson.put("stickers", stickers);
         masterPacks.put(packJson);
         saveMasterContents(context, masterRoot);
+        StickerContentProvider provider = StickerContentProvider.getInstance();
+        if (provider != null) provider.invalidateStickerPackList();
+        StickerUpdateManager.triggerUpdate();
         return identifier;
     }
 
@@ -1311,6 +1434,9 @@ public class WastickerParser {
         }
 
         saveMasterContents(context, masterRoot);
+        StickerContentProvider provider = StickerContentProvider.getInstance();
+        if (provider != null) provider.invalidateStickerPackList();
+        StickerUpdateManager.triggerUpdate();
     }
 
     private static void copyFileToUri(Context context, File src, Uri destUri) throws IOException {
@@ -1477,6 +1603,9 @@ public class WastickerParser {
         masterPacks.put(packJson);
 
         saveMasterContents(context, masterRoot);
+        StickerContentProvider provider = StickerContentProvider.getInstance();
+        if (provider != null) provider.invalidateStickerPackList();
+        StickerUpdateManager.triggerUpdate();
     }
 
     // ------------------------------------------------------------------------
