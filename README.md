@@ -75,7 +75,7 @@ Android/
 
 ## 🤖 Telegram Bot (companion)
 
-The repo also includes a Python Telegram bot (`tg-wa.py`) that:
+The repo also includes the `mochibot` Python Telegram bot package that:
 
 - Accepts forwarded Telegram sticker packs
 - Converts them to `.wasticker` format (static → WebP, animated → animated WebP)
@@ -85,8 +85,8 @@ The repo also includes a Python Telegram bot (`tg-wa.py`) that:
 
 ```bash
 cp .env.example .env   # fill in your bot token and API keys
-pip install -r requirements.txt
-python tg-wa.py
+uv sync
+uv run mochibot
 ```
 
 Conversion concurrency (download/render/encode workers) is configurable at runtime via the bot's `/settings` command — useful for tuning throughput to your hardware.

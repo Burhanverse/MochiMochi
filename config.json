@@ -1,6 +1,0 @@
-{
-  "max_concurrent": 10,
-  "process_pool_workers": 6,
-  "ffmpeg_threads": 6,
-  "tgs_render_timeout": 60
-}
