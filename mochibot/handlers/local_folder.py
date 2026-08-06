@@ -177,8 +177,8 @@ def register_local_handlers(app: Client):
                         author_name = message.from_user.first_name or "Telegram User"
                         zipf.writestr('author.txt', author_name.encode('utf-8'))
                         zipf.writestr('title.txt', part_title.encode('utf-8'))
-                        for webp_file in processing_dir.glob("*.webp"):
-                            zipf.write(webp_file, f"sticker_{webp_file.stem[-8:]}.webp")
+                        for idx, webp_file in enumerate(sorted(processing_dir.glob("*.webp")), start=1):
+                            zipf.write(webp_file, f"sticker_{idx:03d}.webp")
 
                     zip_paths.append(zip_name)
                     total_processed += processed_count

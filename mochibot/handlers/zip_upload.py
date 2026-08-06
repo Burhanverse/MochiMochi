@@ -147,8 +147,8 @@ def register_zip_upload_handlers(app: Client):
                                 zipf.write(tray_path, 'tray.png')
                             zipf.writestr('author.txt', author_name.encode('utf-8'))
                             zipf.writestr('title.txt', part_title.encode('utf-8'))
-                            for webp_file in processing_dir.glob("*.webp"):
-                                zipf.write(webp_file, f"sticker_{webp_file.stem[-8:]}.webp")
+                            for idx, webp_file in enumerate(sorted(processing_dir.glob("*.webp")), start=1):
+                                zipf.write(webp_file, f"sticker_{idx:03d}.webp")
 
                         await msg.edit_text(f"📤 Uploading {type_name} sticker pack...")
                         part_suffix = f" (Part {part_num}/{num_parts})" if num_parts > 1 else ""
