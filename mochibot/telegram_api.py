@@ -3,6 +3,8 @@
 import logging
 from io import BytesIO
 
+from pyrogram import raw
+
 from resources import resources
 
 logger = logging.getLogger(__name__)
@@ -56,10 +58,9 @@ async def get_sticker_set_via_bot_api(bot_token: str, name: str) -> dict:
 async def fetch_pack_emoji_map(app, set_name: str) -> dict:
     """Fetches pack emoji map via kurigram raw MTProto calls."""
     try:
-        from pyrogram import raw as _raw
         result = await app.invoke(
-            _raw.functions.messages.GetStickerSet(
-                stickerset=_raw.types.InputStickerSetShortName(short_name=set_name),
+            raw.functions.messages.GetStickerSet(
+                stickerset=raw.types.InputStickerSetShortName(short_name=set_name),
                 hash=0,
             )
         )

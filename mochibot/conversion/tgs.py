@@ -13,9 +13,9 @@ from pathlib import Path
 from PIL import Image
 
 from config import WA_ANIM_TARGET, WA_MAX_ANIM_DURATION_MS, WA_MAX_BYTES
-from conversion.animated import _encode_animated_webp_under_limit
 from resources import resources
 from storage import storage
+from .animated import _encode_animated_webp_under_limit
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,7 @@ async def convert_tgs_to_animated_webp(tgs_data: bytes) -> BytesIO:
                 gif_data = f.read()
 
         logger.warning(f"TGS → GIF fallback ({len(gif_data) / 1024:.1f}KB) — smooth transparency NOT preserved")
-        from conversion.video import convert_video_to_animated_webp
+        from .video import convert_video_to_animated_webp
         return await convert_video_to_animated_webp(gif_data)
 
     try:
@@ -131,5 +131,5 @@ async def convert_to_whatsapp_animated(file_data: bytes, is_tgs: bool) -> BytesI
         return await convert_tgs_to_animated_webp(file_data)
     else:
         logger.info("Converting video sticker to animated WebP...")
-        from conversion.video import convert_video_to_animated_webp
+        from .video import convert_video_to_animated_webp
         return await convert_video_to_animated_webp(file_data)

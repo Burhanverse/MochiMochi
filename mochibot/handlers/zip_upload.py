@@ -14,12 +14,12 @@ from pyrogram.types import Message
 from conversion.static import _convert_static_bytes_to_webp
 from conversion.tgs import convert_to_whatsapp_animated
 from conversion.tray import optimize_tray_icon
+from resources import resources
 from sticker_pack.filenames import (
     classify_sticker_files,
     sanitize_filename,
     split_into_chunks,
 )
-from resources import resources
 from storage import storage
 
 logger = logging.getLogger(__name__)
@@ -147,8 +147,8 @@ def register_zip_upload_handlers(app: Client):
                                 zipf.write(tray_path, 'tray.png')
                             zipf.writestr('author.txt', author_name.encode('utf-8'))
                             zipf.writestr('title.txt', part_title.encode('utf-8'))
-                            for webp_file in processing_dir.glob("*.webp"):
-                                zipf.write(webp_file, f"sticker_{webp_file.stem[-8:]}.webp")
+                            for idx, webp_file in enumerate(sorted(processing_dir.glob("*.webp")), start=1):
+                                zipf.write(webp_file, f"sticker_{idx:03d}.webp")
 
                         await msg.edit_text(f"📤 Uploading {type_name} sticker pack...")
                         part_suffix = f" (Part {part_num}/{num_parts})" if num_parts > 1 else ""
