@@ -15,6 +15,7 @@ from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from conversion.static import _convert_static_bytes_to_webp
 from conversion.tgs import convert_to_whatsapp_animated
 from conversion.tray import optimize_tray_icon
+from resources import resources
 from sticker_pack.filenames import SimpleSticker, _format_elapsed, sanitize_filename
 from sticker_pack.wasticker_zip import (
     _build_wasticker_zip_from_valid_entries,
@@ -22,7 +23,6 @@ from sticker_pack.wasticker_zip import (
     create_wastickers_zip,
     generate_thumbnail_from_webp_bytes,
 )
-from resources import resources
 from storage import storage
 from telegram_api import (
     download_file_by_id,

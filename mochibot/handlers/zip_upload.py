@@ -14,12 +14,12 @@ from pyrogram.types import Message
 from conversion.static import _convert_static_bytes_to_webp
 from conversion.tgs import convert_to_whatsapp_animated
 from conversion.tray import optimize_tray_icon
+from resources import resources
 from sticker_pack.filenames import (
     classify_sticker_files,
     sanitize_filename,
     split_into_chunks,
 )
-from resources import resources
 from storage import storage
 
 logger = logging.getLogger(__name__)

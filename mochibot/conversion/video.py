@@ -7,8 +7,8 @@ import av
 from PIL import Image
 
 from config import WA_ANIM_TARGET, WA_MAX_ANIM_DURATION_MS, WA_MAX_BYTES
-from conversion.animated import _encode_animated_webp_under_limit
 from resources import resources
+from .animated import _encode_animated_webp_under_limit
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ def probe_video_stream(video_data: bytes) -> tuple[float, float, int]:
             elif stream.duration is not None and stream.time_base is not None:
                 duration = float(stream.duration * stream.time_base)
 
-            fps = parse_frame_rate(stream.average_rate or stream.r_frame_rate or 15.0)
+            fps = parse_frame_rate(stream.average_rate or stream.guessed_rate or 15.0)
             nb_frames = stream.frames if stream.frames is not None else 0
 
             if duration == 0.0 and nb_frames > 0 and fps > 0:
@@ -75,7 +75,7 @@ def decode_video_frames_to_pil(video_data: bytes, target_fps: float, max_frames:
             except Exception:
                 pass
 
-            input_fps = parse_frame_rate(stream.average_rate or stream.r_frame_rate or 15.0)
+            input_fps = parse_frame_rate(stream.average_rate or stream.guessed_rate or 15.0)
             if input_fps <= 0:
                 input_fps = 15.0
 
