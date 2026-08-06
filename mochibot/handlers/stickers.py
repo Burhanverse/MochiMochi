@@ -292,8 +292,8 @@ If you're on iOS, tap the .wasticker file and it should prompt you directly.
 """
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton(
-                "Download WA Sticker Maker (Android)",
-                url="https://play.google.com/store/apps/details?id=com.marsvard.stickermakerforwhatsapp"
+                "Download MochiMochi (Android)",
+                url="https://github.com/maxcodl/MochiMochi/releases"
             )
         ]])
         await message.reply_text(help_text, reply_markup=keyboard)
