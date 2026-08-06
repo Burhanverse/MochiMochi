@@ -247,25 +247,56 @@ abstract class AddStickerPackActivity : BaseActivity() {
 
     // ── Standard (non-chunked) launch path ───────────────────────────────────
 
+    /**
+     * Determines which WhatsApp package (Consumer vs Business/SMB) to target when adding a sticker pack.
+     *
+     * IMPORTANT: We MUST check installed status BEFORE checking whitelist status.
+     * WhitelistCheck.isStickerPackWhitelistedInWhatsApp... returns false BOTH when a pack is not whitelisted
+     * AND when that WhatsApp variant is not installed at all. Targeting an uninstalled package based solely
+     * on whitelist status causes ActivityNotFoundException and misleading "not installed" errors.
+     */
     private fun proceedWithLaunch(identifier: String, stickerPackName: String) {
-        val whitelistedConsumer =
-            WhitelistCheck.isStickerPackWhitelistedInWhatsAppConsumer(this, identifier)
-        val whitelistedSmb =
-            WhitelistCheck.isStickerPackWhitelistedInWhatsAppSmb(this, identifier)
+        val consumerInstalled = WhitelistCheck.isWhatsAppConsumerAppInstalled(packageManager)
+        val smbInstalled = WhitelistCheck.isWhatsAppSmbAppInstalled(packageManager)
+
+        if (!consumerInstalled && !smbInstalled) {
+            launchIntentToAddPackToChooser(identifier, stickerPackName)
+            return
+        }
+
+        val consumerWhitelisted = consumerInstalled && WhitelistCheck.isStickerPackWhitelistedInWhatsAppConsumer(this, identifier)
+        val smbWhitelisted = smbInstalled && WhitelistCheck.isStickerPackWhitelistedInWhatsAppSmb(this, identifier)
 
         when {
-            !whitelistedConsumer && !whitelistedSmb ->
-                launchIntentToAddPackToChooser(identifier, stickerPackName)
-            !whitelistedConsumer ->
+            consumerInstalled && smbInstalled -> {
+                when {
+                    !consumerWhitelisted && !smbWhitelisted ->
+                        launchIntentToAddPackToChooser(identifier, stickerPackName)
+                    !consumerWhitelisted ->
+                        launchIntentToAddPackToSpecificPackage(
+                            identifier, stickerPackName, WhitelistCheck.CONSUMER_WHATSAPP_PACKAGE_NAME
+                        )
+                    !smbWhitelisted ->
+                        launchIntentToAddPackToSpecificPackage(
+                            identifier, stickerPackName, WhitelistCheck.SMB_WHATSAPP_PACKAGE_NAME
+                        )
+                    else ->
+                        // Both installed and both whitelisted: open chooser to let user re-add to either app
+                        launchIntentToAddPackToChooser(identifier, stickerPackName)
+                }
+            }
+            consumerInstalled -> {
+                // Only Consumer is installed: target Consumer regardless of whitelist status
                 launchIntentToAddPackToSpecificPackage(
-                    identifier, stickerPackName,
-                    WhitelistCheck.CONSUMER_WHATSAPP_PACKAGE_NAME
+                    identifier, stickerPackName, WhitelistCheck.CONSUMER_WHATSAPP_PACKAGE_NAME
                 )
-            !whitelistedSmb ->
+            }
+            smbInstalled -> {
+                // Only SMB is installed: target SMB regardless of whitelist status
                 launchIntentToAddPackToSpecificPackage(
-                    identifier, stickerPackName,
-                    WhitelistCheck.SMB_WHATSAPP_PACKAGE_NAME
+                    identifier, stickerPackName, WhitelistCheck.SMB_WHATSAPP_PACKAGE_NAME
                 )
+            }
         }
     }
 
@@ -292,9 +323,15 @@ abstract class AddStickerPackActivity : BaseActivity() {
         intent.setPackage(whatsappPackageName)
         try {
             addStickerLauncher.launch(intent)
+        } catch (e: ActivityNotFoundException) {
+            Log.e(TAG, "Target package $whatsappPackageName not found for sticker pack launch", e)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch intent for $whatsappPackageName", e)
-            Toast.makeText(this, R.string.whatsapp_not_installed, Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                getString(R.string.error_with_message, e.message ?: "Failed to launch WhatsApp"),
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
@@ -304,9 +341,16 @@ abstract class AddStickerPackActivity : BaseActivity() {
             addStickerLauncher.launch(
                 Intent.createChooser(intent, getString(R.string.add_to_whatsapp))
             )
+        } catch (e: ActivityNotFoundException) {
+            Log.e(TAG, "WhatsApp intent handler not found", e)
+            Toast.makeText(this, R.string.whatsapp_not_installed, Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Log.e(TAG, "Couldn't open WhatsApp chooser", e)
-            Toast.makeText(this, R.string.whatsapp_not_installed, Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                getString(R.string.error_with_message, e.message ?: "Failed to launch chooser"),
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
