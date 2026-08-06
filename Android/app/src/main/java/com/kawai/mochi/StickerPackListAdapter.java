@@ -27,6 +27,8 @@ import androidx.recyclerview.widget.ListAdapter;
 import androidx.recyclerview.widget.DiffUtil;
 
 public class StickerPackListAdapter extends ListAdapter<StickerPack, StickerPackListItemViewHolder> {
+    private static final java.util.concurrent.ExecutorService PREFETCH_EXECUTOR = java.util.concurrent.Executors.newSingleThreadExecutor();
+
     @NonNull
     private final OnAddButtonClickedListener onAddButtonClickedListener;
     private int maxNumberOfStickersInARow;
@@ -159,11 +161,20 @@ public class StickerPackListAdapter extends ListAdapter<StickerPack, StickerPack
 
             // ---- PREFETCH THUMBNAILS IN BACKGROUND ----
             final StickerPreviewAdapter finalAdapter = adapter;
-            new Thread(() -> finalAdapter.prefetchThumbnails()).start();
+            PREFETCH_EXECUTOR.execute(finalAdapter::prefetchThumbnails);
             // -----------------------------------------
 
         } else {
             viewHolder.imageRowView.setVisibility(View.GONE);
+        }
+    }
+
+    @Override
+    public void onViewRecycled(@NonNull StickerPackListItemViewHolder holder) {
+        super.onViewRecycled(holder);
+        holder.previewAdapter = null;
+        if (holder.imageRowView != null) {
+            holder.imageRowView.setAdapter(null);
         }
     }
 
