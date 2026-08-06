@@ -1,6 +1,7 @@
 """Resource tuning /settings command handlers."""
 
 import logging
+import os
 
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -51,7 +52,6 @@ def _settings_keyboard() -> InlineKeyboardMarkup:
 
 
 def _settings_text() -> str:
-    import os
     cpu_count = os.cpu_count() or 1
     lines = [f"**Resource & CPU settings** (Host Cores: `{cpu_count}`)\n"]
     for key, meta in _SETTINGS_META.items():

@@ -6,6 +6,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+import aiohttp
 from storage import storage
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,6 @@ class ResourceManager:
         self._cpu_semaphore: asyncio.Semaphore | None = None
 
     async def get_http_session(self) -> Any:
-        import aiohttp
         if self._http_session is None or self._http_session.closed:
             timeout = aiohttp.ClientTimeout(total=60)
             self._http_session = aiohttp.ClientSession(timeout=timeout)
