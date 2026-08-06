@@ -589,6 +589,9 @@ public class WastickerParser {
             }
 
             saveMasterContents(context, masterRoot);
+            StickerContentProvider provider = StickerContentProvider.getInstance();
+            if (provider != null) provider.invalidateStickerPackList();
+            StickerUpdateManager.triggerUpdate();
             return firstPackIdentifier;
 
         } finally {
@@ -1250,6 +1253,7 @@ public class WastickerParser {
 
         StickerContentProvider provider = StickerContentProvider.getInstance();
         if (provider != null) provider.invalidateStickerPackList();
+        StickerUpdateManager.triggerUpdate();
     }
 
     private static void processAndSaveImage(Context context, Uri sourceUri, String packId, String fileName, boolean isTray) throws IOException {
@@ -1353,6 +1357,9 @@ public class WastickerParser {
         packJson.put("stickers", stickers);
         masterPacks.put(packJson);
         saveMasterContents(context, masterRoot);
+        StickerContentProvider provider = StickerContentProvider.getInstance();
+        if (provider != null) provider.invalidateStickerPackList();
+        StickerUpdateManager.triggerUpdate();
         return identifier;
     }
 
@@ -1394,6 +1401,9 @@ public class WastickerParser {
         }
 
         saveMasterContents(context, masterRoot);
+        StickerContentProvider provider = StickerContentProvider.getInstance();
+        if (provider != null) provider.invalidateStickerPackList();
+        StickerUpdateManager.triggerUpdate();
     }
 
     private static void copyFileToUri(Context context, File src, Uri destUri) throws IOException {
@@ -1560,6 +1570,9 @@ public class WastickerParser {
         masterPacks.put(packJson);
 
         saveMasterContents(context, masterRoot);
+        StickerContentProvider provider = StickerContentProvider.getInstance();
+        if (provider != null) provider.invalidateStickerPackList();
+        StickerUpdateManager.triggerUpdate();
     }
 
     // ------------------------------------------------------------------------

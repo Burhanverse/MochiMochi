@@ -308,18 +308,19 @@ class StickerPackListActivity : AddStickerPackActivity(), ThumbnailRegenerationM
                     val existingIndex = stickerPackList.indexOfFirst { it.identifier == importedId }
                     if (existingIndex >= 0) {
                         stickerPackList[existingIndex] = importedPack
-                        allStickerPacksListAdapter.notifyItemChanged(existingIndex)
                     } else {
                         stickerPackList.add(importedPack)
-                        allStickerPacksListAdapter.notifyItemInserted(stickerPackList.size - 1)
                     }
-                } else {
-                    refreshStickerPacks(true)
+                    allStickerPacksListAdapter.submitList(ArrayList(stickerPackList))
                 }
+                refreshStickerPacks(true)
+                StickerUpdateManager.triggerUpdate()
 
                 updateEmptyState()
                 supportActionBar?.title = resources.getQuantityString(R.plurals.title_activity_sticker_packs_list, stickerPackList.size)
-                packRecyclerView.smoothScrollToPosition(stickerPackList.size - 1)
+                if (stickerPackList.isNotEmpty()) {
+                    packRecyclerView.smoothScrollToPosition(stickerPackList.size - 1)
+                }
             } catch (e: Exception) {
                 Toast.makeText(this@StickerPackListActivity, getString(R.string.import_error, e.message), Toast.LENGTH_LONG).show()
             } finally {

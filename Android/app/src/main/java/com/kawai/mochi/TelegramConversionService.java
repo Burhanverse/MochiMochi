@@ -139,6 +139,9 @@ public class TelegramConversionService extends Service {
                 }
 
                 manager.markSucceeded(taskId, results);
+                StickerContentProvider provider = StickerContentProvider.getInstance();
+                if (provider != null) provider.invalidateStickerPackList();
+                StickerUpdateManager.triggerUpdate();
                 manager.appendLog(taskId, "✅ Background conversion completed.");
                 manager.appendAdvancedLog(taskId, "✅ Background conversion completed.");
                 updateNotification(getString(R.string.telegram_conversion_notif_done_title),
