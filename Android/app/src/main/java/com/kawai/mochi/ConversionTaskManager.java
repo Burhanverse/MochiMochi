@@ -2,6 +2,7 @@ package com.kawai.mochi;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -15,6 +16,7 @@ import java.util.UUID;
 
 /** In-memory task store for Telegram conversions. */
 public class ConversionTaskManager {
+    private static final String TAG = "ConversionTaskManager";
 
     public enum Status {
         QUEUED,
@@ -185,7 +187,7 @@ public class ConversionTaskManager {
                 tasks.add(TaskRecord.fromJson(arr.getJSONObject(i)));
             }
         } catch (JSONException e) {
-            e.printStackTrace();
+            Log.e(TAG, "Failed to load conversion tasks from SharedPreferences", e);
         }
     }
 
@@ -196,7 +198,7 @@ public class ConversionTaskManager {
             try {
                 arr.put(t.toJson());
             } catch (JSONException e) {
-                e.printStackTrace();
+                Log.e(TAG, "Failed to serialize task to JSON: " + t.taskId, e);
             }
         }
         SharedPreferences prefs = appContext.getSharedPreferences("telegram_conversion_tasks", Context.MODE_PRIVATE);
@@ -208,7 +210,7 @@ public class ConversionTaskManager {
 
     public synchronized String createTask(String url, String author, String packName) {
         String id = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-        TaskRecord record = new TaskRecord(id, url, author, packName);
+        TaskRecord record = new TaskRecord(id, TelegramApiClient.redactBotToken(url), author, packName);
         tasks.add(record);
         saveToPrefs();
         return id;
@@ -232,7 +234,7 @@ public class ConversionTaskManager {
     public synchronized void appendLog(String taskId, String message) {
         TaskRecord t = find(taskId);
         if (t == null) return;
-        t.logs.add(message);
+        t.logs.add(TelegramApiClient.redactBotToken(message));
         if (t.logs.size() > 400) {
             t.logs.remove(0);
         }
@@ -242,7 +244,7 @@ public class ConversionTaskManager {
     public synchronized void appendAdvancedLog(String taskId, String message) {
         TaskRecord t = find(taskId);
         if (t == null) return;
-        t.advancedLogs.add(message);
+        t.advancedLogs.add(TelegramApiClient.redactBotToken(message));
         if (t.advancedLogs.size() > 1200) {
             t.advancedLogs.remove(0);
         }
@@ -252,14 +254,14 @@ public class ConversionTaskManager {
     public synchronized void updateLastLog(String taskId, String message) {
         TaskRecord t = find(taskId);
         if (t == null || t.logs.isEmpty()) return;
-        t.logs.set(t.logs.size() - 1, message);
+        t.logs.set(t.logs.size() - 1, TelegramApiClient.redactBotToken(message));
         // Don't save to prefs on every log to avoid I/O overhead.
     }
 
     public synchronized void updateLastAdvancedLog(String taskId, String message) {
         TaskRecord t = find(taskId);
         if (t == null || t.advancedLogs.isEmpty()) return;
-        t.advancedLogs.set(t.advancedLogs.size() - 1, message);
+        t.advancedLogs.set(t.advancedLogs.size() - 1, TelegramApiClient.redactBotToken(message));
         saveToPrefs();
     }
 
@@ -277,7 +279,7 @@ public class ConversionTaskManager {
         TaskRecord t = find(taskId);
         if (t == null) return;
         t.status = Status.FAILED;
-        t.error = error;
+        t.error = TelegramApiClient.redactBotToken(error);
         saveToPrefs();
     }
 

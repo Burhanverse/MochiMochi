@@ -870,17 +870,50 @@ public class WastickerParser {
         zos.closeEntry();
     }
 
+    private static final long MAX_UNCOMPRESSED_BYTES = 200 * 1024 * 1024L; // 200 MB limit
+    private static final int MAX_ENTRY_COUNT = 2000; // 2000 files limit
+
     private static void unzip(InputStream is, File destDir) throws IOException {
+        String destCanonicalPath = destDir.getCanonicalPath();
+        if (!destCanonicalPath.endsWith(File.separator)) {
+            destCanonicalPath += File.separator;
+        }
+
         ZipInputStream zis = new ZipInputStream(is);
         ZipEntry entry;
+        long totalBytes = 0;
+        int entryCount = 0;
+
         while ((entry = zis.getNextEntry()) != null) {
+            entryCount++;
+            if (entryCount > MAX_ENTRY_COUNT) {
+                throw new IOException("Invalid or oversized sticker pack file: exceeded maximum entry count (" + MAX_ENTRY_COUNT + ")");
+            }
+
             File file = new File(destDir, entry.getName());
-            if (entry.isDirectory()) file.mkdirs();
-            else {
-                file.getParentFile().mkdirs();
+            String fileCanonicalPath = file.getCanonicalPath();
+
+            if (!fileCanonicalPath.startsWith(destCanonicalPath)) {
+                throw new IOException("Zip entry attempted path traversal outside target directory: " + entry.getName());
+            }
+
+            if (entry.isDirectory()) {
+                file.mkdirs();
+            } else {
+                File parent = file.getParentFile();
+                if (parent != null) {
+                    parent.mkdirs();
+                }
                 try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(file))) {
-                    byte[] buffer = new byte[8192]; int len;
-                    while ((len = zis.read(buffer)) > 0) bos.write(buffer, 0, len);
+                    byte[] buffer = new byte[8192];
+                    int len;
+                    while ((len = zis.read(buffer)) > 0) {
+                        totalBytes += len;
+                        if (totalBytes > MAX_UNCOMPRESSED_BYTES) {
+                            throw new IOException("Invalid or oversized sticker pack file: exceeded maximum size limit (200MB)");
+                        }
+                        bos.write(buffer, 0, len);
+                    }
                 }
             }
             zis.closeEntry();

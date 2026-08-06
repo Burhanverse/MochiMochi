@@ -75,6 +75,14 @@ public class TelegramApiClient {
         return getBytesWithRetry(downloadUrl);
     }
 
+    /**
+     * Redacts bot tokens in URLs or text strings to prevent token leakage in logcat or exception messages.
+     */
+    public static String redactBotToken(String text) {
+        if (text == null || text.isEmpty()) return text;
+        return text.replaceAll("(?i)(bot|file/bot)[0-9]+:[A-Za-z0-9_-]+", "$1***");
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private JSONObject getJson(String urlStr) throws IOException, JSONException {
@@ -85,9 +93,9 @@ public class TelegramApiClient {
             int code = conn.getResponseCode();
             InputStream stream = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
             String body = readString(stream);
-            Log.d(TAG, "GET " + urlStr + " → " + code);
+            Log.d(TAG, "GET " + redactBotToken(urlStr) + " → " + code);
             if (code == 429 || (code >= 500 && code < 600)) {
-                throw new IOException("Transient HTTP " + code + " for " + urlStr);
+                throw new IOException("Transient HTTP " + code + " for " + redactBotToken(urlStr));
             }
             return new JSONObject(body);
         } finally {
@@ -106,7 +114,7 @@ public class TelegramApiClient {
                 sleepBackoff(attempt, e.getMessage());
             }
         }
-        throw last != null ? last : new IOException("Request failed: " + urlStr);
+        throw last != null ? last : new IOException("Request failed: " + redactBotToken(urlStr));
     }
 
     private byte[] getBytes(String urlStr) throws IOException {
@@ -156,7 +164,7 @@ public class TelegramApiClient {
                 sleepBackoff(attempt, e.getMessage());
             }
         }
-        throw last != null ? last : new IOException("Download failed: " + urlStr);
+        throw last != null ? last : new IOException("Download failed: " + redactBotToken(urlStr));
     }
 
     private HttpURLConnection openConnection(String urlStr) throws IOException {
@@ -204,7 +212,7 @@ public class TelegramApiClient {
     private void sleepBackoff(int attempt, String reason) {
         int idx = Math.max(0, Math.min(RETRY_DELAYS_MS.length - 1, attempt - 1));
         int delay = RETRY_DELAYS_MS[idx];
-        Log.w(TAG, "Transient Telegram API failure (attempt " + attempt + "): " + reason
+        Log.w(TAG, "Transient Telegram API failure (attempt " + attempt + "): " + redactBotToken(reason)
                 + ". Retrying in " + delay + "ms");
         try {
             Thread.sleep(delay);
