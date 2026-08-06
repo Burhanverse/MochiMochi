@@ -1,8 +1,0 @@
-pyrogram
-TgCrypto
-Pillow>=10.0.0
-python-dotenv
-aiohttp
-ffmpeg-python
-numpy
-lottie[all]
