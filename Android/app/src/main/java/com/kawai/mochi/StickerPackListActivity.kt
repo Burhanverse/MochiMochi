@@ -431,15 +431,15 @@ class StickerPackListActivity : AddStickerPackActivity(), ThumbnailRegenerationM
         if (rvWidth <= 0) return
 
         val density = resources.displayMetrics.density
-        // Correct overhead: Card margins (12+12) + RV start (16) + RV to button (16) + button (48) + button end (16)
-        val overhead = Math.round((12 + 12 + 16 + 16 + 48 + 16) * density)
+        // Correct overhead: Card margins (16+16) + RV start (18) + RV to button (16) + button (48) + button end (18)
+        val overhead = Math.round((16 + 16 + 18 + 16 + 48 + 18) * density)
         val imageRowWidth = rvWidth - overhead
         if (imageRowWidth <= 0) return
 
         val maxNumberOfImagesInARow = STICKER_PREVIEW_DISPLAY_LIMIT
         
         // Aim for a small fixed margin between stickers
-        val desiredMargin = Math.round(4 * density)
+        val desiredMargin = Math.round(6 * density)
         val totalMargin = desiredMargin * (maxNumberOfImagesInARow - 1)
         
         // Calculate the preview size that allows exactly 5 stickers to fit
