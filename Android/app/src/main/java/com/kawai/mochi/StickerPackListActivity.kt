@@ -132,7 +132,7 @@ class StickerPackListActivity : AddStickerPackActivity(), ThumbnailRegenerationM
         
         stickerPackList = intentList ?: ArrayList()
 
-        supportActionBar?.title = resources.getQuantityString(R.plurals.title_activity_sticker_packs_list, stickerPackList.size)
+        supportActionBar?.title = getString(R.string.app_name)
 
         filePickerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == RESULT_OK) {
@@ -235,7 +235,7 @@ class StickerPackListActivity : AddStickerPackActivity(), ThumbnailRegenerationM
                 }
                 
                 updateEmptyState()
-                supportActionBar?.title = resources.getQuantityString(R.plurals.title_activity_sticker_packs_list, stickerPackList.size)
+                supportActionBar?.title = getString(R.string.app_name)
                 
             } catch (e: Exception) {
                 Log.e("ListActivity", "Refresh failed", e)
@@ -317,7 +317,7 @@ class StickerPackListActivity : AddStickerPackActivity(), ThumbnailRegenerationM
                 StickerUpdateManager.triggerUpdate()
 
                 updateEmptyState()
-                supportActionBar?.title = resources.getQuantityString(R.plurals.title_activity_sticker_packs_list, stickerPackList.size)
+                supportActionBar?.title = getString(R.string.app_name)
                 if (stickerPackList.isNotEmpty()) {
                     packRecyclerView.smoothScrollToPosition(stickerPackList.size - 1)
                 }
@@ -338,8 +338,7 @@ class StickerPackListActivity : AddStickerPackActivity(), ThumbnailRegenerationM
         stickerPackList.removeAt(position)
         allStickerPacksListAdapter.submitList(ArrayList(stickerPackList))
         updateEmptyState()
-        supportActionBar?.title = resources.getQuantityString(
-            R.plurals.title_activity_sticker_packs_list, stickerPackList.size)
+        supportActionBar?.title = getString(R.string.app_name)
 
         lifecycleScope.launch {
             try {
@@ -352,8 +351,7 @@ class StickerPackListActivity : AddStickerPackActivity(), ThumbnailRegenerationM
                 stickerPackList.add(position.coerceAtMost(stickerPackList.size), pack)
                 allStickerPacksListAdapter.submitList(ArrayList(stickerPackList))
                 updateEmptyState()
-                supportActionBar?.title = resources.getQuantityString(
-                    R.plurals.title_activity_sticker_packs_list, stickerPackList.size)
+                supportActionBar?.title = getString(R.string.app_name)
                 Toast.makeText(this@StickerPackListActivity, getString(R.string.error_with_message, e.message), Toast.LENGTH_LONG).show()
             }
         }
