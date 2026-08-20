@@ -49,6 +49,12 @@
         <item name="android:colorBackground">@color/amoled_background</item>
         <item name="colorSurface">@color/amoled_background</item>
         <item name="colorSurfaceVariant">@color/amoled_surface_variant</item>
+        <item name="colorSurfaceContainerLowest">@color/amoled_background</item>
+        <item name="colorSurfaceContainerLow">@color/amoled_background</item>
+        <item name="colorSurfaceContainer">@color/amoled_surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/amoled_surface_high</item>
+        <item name="colorSurfaceContainerHighest">@color/amoled_surface_highest</item>
+        <item name="colorOutlineVariant">@color/amoled_stroke</item>
         <item name="android:navigationBarColor">@color/amoled_background</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
@@ -64,11 +70,12 @@
         <item name="android:colorBackground">@color/amoled_background</item>
         <item name="colorSurface">@color/amoled_background</item>
         <item name="colorSurfaceVariant">@color/amoled_surface_variant</item>
-        <item name="colorSurfaceContainer">@color/amoled_background</item>
-        <item name="colorSurfaceContainerHigh">@color/amoled_surface_variant</item>
-        <item name="colorSurfaceContainerHighest">@color/amoled_surface_variant</item>
-        <item name="colorSurfaceContainerLow">@color/amoled_background</item>
         <item name="colorSurfaceContainerLowest">@color/amoled_background</item>
+        <item name="colorSurfaceContainerLow">@color/amoled_background</item>
+        <item name="colorSurfaceContainer">@color/amoled_surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/amoled_surface_high</item>
+        <item name="colorSurfaceContainerHighest">@color/amoled_surface_highest</item>
+        <item name="colorOutlineVariant">@color/amoled_stroke</item>
         <item name="android:navigationBarColor">@color/amoled_background</item>
     </style>
 
