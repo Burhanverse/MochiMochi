@@ -174,6 +174,9 @@ def _sync_convert_video_to_animated_webp(video_data: bytes) -> BytesIO:
         if len(pil_frames) == 1:
             logger.warning("Video sticker has only 1 frame; duplicating to satisfy WhatsApp animated requirement")
             duplicate_canvas = pil_frames[0].copy()
+            px = duplicate_canvas.load()
+            r, g, b, a = px[0, 0]
+            px[0, 0] = (r, g, b, 1 if a == 0 else 0)
             pil_frames.append(duplicate_canvas)
 
         output = _encode_animated_webp_under_limit(pil_frames, frame_duration_ms, WA_ANIM_TARGET)
